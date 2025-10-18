@@ -1,0 +1,78 @@
+# .gitignore for Python backend (TikTok clone)
+# Includes common Python, virtualenv, IDE, and Docker ignores.
+# Quick Docker commands (to start/stop):
+# Start (detached):
+#   docker compose up -d
+# Stop and remove containers/networks: 
+#   docker compose down
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+venv.bak/
+
+# Pytest cache
+.pytest_cache/
+
+# Coverage
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+
+# mypy
+.mypy_cache/
+
+# Pyre
+.pyre/
+
+# IDEs and editors
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Docker
+docker-compose.override.yml
+**/docker-compose.override.yml
+*.env
+env.*
+
+# Node modules (if any frontend parts are present)
+node_modules/
