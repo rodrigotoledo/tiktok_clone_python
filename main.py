@@ -1,17 +1,20 @@
 from fastapi import FastAPI
-from database import engine_pg, create_tables
+from database import create_tables
+from models import User, Post, Comment
 
-app = FastAPI(title="Meu Projeto Python")
+app = FastAPI(title="Meu App Python = Rails!")
 
-# Cria tabelas na inicialização
 @app.on_event("startup")
 async def startup():
     create_tables()
 
 @app.get("/")
 async def root():
-    return {"message": "🚀 FastAPI rodando!", "bancos": "Postgres + SQLite"}
+    return {
+        "message": "🚀 Schema Rails → Python OK!",
+        "tabelas": ["users", "posts", "comments", "accounts", "followings", "sessions"]
+    }
 
 @app.get("/health")
 async def health():
-    return {"status": "OK"}
+    return {"status": "OK", "bancos": "Postgres + SQLite"}
