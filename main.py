@@ -1,15 +1,32 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 import shutil
 import os
-from datetime import datetime
+from datetime import datetime, timedelta  # 👈 ADICIONAR timedelta AQUI
+from pydantic import BaseModel
 
-# Nossos imports
+# Nossos imports - APENAS OS BÁSICOS
 from database import create_tables, get_db
-from models import User, Post, Comment, Following, Session as UserSession, Account
-from config import APP_ENV
+from models import User, Post, Comment  # 👈 APENAS ESTES TRÊS
+from config import APP_ENV, ACCESS_TOKEN_EXPIRE_MINUTES
+from auth import (
+    authenticate_user, create_access_token, get_password_hash,
+    verify_token, security
+)
+
+class UserCreate(BaseModel):
+    email_address: str
+    password: str
+
+class UserLogin(BaseModel):
+    email_address: str
+    password: str
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 app = FastAPI(
     title="TikTok Clone API",
@@ -20,7 +37,10 @@ app = FastAPI(
 # CORS para o frontend Vite
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+      "http://localhost:3000", "http://127.0.0.1:3000",
+      "http://localhost:5173", "http://127.0.0.1:5173"
+      ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,13 +59,74 @@ async def startup():
     create_tables()
     print("✅ Todas as tabelas criadas/verificadas!")
 
+# ===== ROTAS DE AUTENTICAÇÃO =====
+
+@app.post("/auth/signup", response_model=dict)
+async def signup(user_data: UserCreate, db: Session = Depends(get_db)):
+    """Registra um novo usuário"""
+    # Verifica se já existe
+    existing_user = db.query(User).filter(User.email_address == user_data.email_address).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Verifique o email informado"
+        )
+
+    # Cria usuário com senha hasheada
+    hashed_password = get_password_hash(user_data.password)
+    user = User(
+        email_address=user_data.email_address,
+        password_digest=hashed_password
+    )
+
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return {
+        "message": "Usuário criado com sucesso",
+        "user_id": user.id,
+        "email": user.email_address
+    }
+
+@app.post("/auth/signin", response_model=Token)
+async def signin(user_data: UserLogin, db: Session = Depends(get_db)):
+    """Login do usuário"""
+    user = authenticate_user(db, user_data.email_address, user_data.password)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou senha incorretos",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Cria token JWT
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)  # 👈 AGORA FUNCIONA
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
+@app.get("/auth/me")
+async def get_current_user(current_user: User = Depends(verify_token)):
+    """Retorna informações do usuário atual"""
+    return {
+        "id": current_user.id,
+        "email_address": current_user.email_address,
+        "created_at": current_user.created_at.isoformat() if current_user.created_at else None
+    }
+
 # ===== ROTAS BÁSICAS =====
 @app.get("/")
 async def root():
     return {
         "message": "🚀 TikTok Clone API está rodando!",
         "ambiente": APP_ENV,
-        "tabelas": ["users", "posts", "comments", "accounts", "followings", "sessions"]
+        "tabelas": ["users", "posts", "comments"]  # 👈 ATUALIZADO
     }
 
 @app.get("/health")
@@ -58,13 +139,15 @@ async def health(db: Session = Depends(get_db)):
 
     return {"status": "OK", "ambiente": APP_ENV, "database": db_status}
 
-# ===== UPLOAD DE VÍDEOS =====
+# ===== ROTAS PROTEGIDAS =====
+
 @app.post("/upload/video")
 async def upload_video(
     title: str = Form(...),
     description: str = Form(...),
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)  # 👈 AGORA É PROTEGIDO!
 ):
     # Verifica se é um vídeo
     if not file.content_type.startswith('video/'):
@@ -78,13 +161,13 @@ async def upload_video(
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    # Salva no banco (user_id temporário - depois usa JWT)
+    # Salva no banco com o user_id REAL do usuário autenticado
     post = Post(
         title=title,
         body=description,
         attachment=f"/uploads/{filename}",
         video_filename=file.filename,
-        user_id=1  # TODO: Pegar do usuário autenticado
+        user_id=current_user.id  # 👈 AGORA USA O USER REAL!
     )
 
     db.add(post)
@@ -95,13 +178,38 @@ async def upload_video(
         "message": "Vídeo uploaded com sucesso!",
         "post_id": post.id,
         "file_url": f"/uploads/{filename}",
-        "video_url": f"http://localhost:8000/uploads/{filename}"  # URL completa
+        "video_url": f"http://localhost:8000/uploads/{filename}"
     }
 
-# ===== ROTAS DE POSTS =====
+@app.post("/posts/{post_id}/comments")
+async def create_comment(
+    post_id: int,
+    body: str = Form(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(verify_token)  # 👈 AGORA É PROTEGIDO!
+):
+    """Adiciona comentário a um post"""
+    post = db.query(Post).filter(Post.id == post_id).first()
+    if not post:
+        raise HTTPException(status_code=404, detail="Post não encontrado")
+
+    comment = Comment(
+        post_id=post_id,
+        user_id=current_user.id,  # 👈 AGORA USA O USER REAL!
+        body=body
+    )
+
+    db.add(comment)
+    db.commit()
+    db.refresh(comment)
+
+    return {"message": "Comentário adicionado", "comment_id": comment.id}
+
+# ===== ROTAS PÚBLICAS =====
+
 @app.get("/posts")
 async def list_posts(db: Session = Depends(get_db)):
-    """Lista todos os posts (videos)"""
+    """Lista todos os posts (videos) - Público"""
     posts = db.query(Post).order_by(Post.created_at.desc()).all()
 
     return {
@@ -120,7 +228,7 @@ async def list_posts(db: Session = Depends(get_db)):
 
 @app.get("/posts/{post_id}")
 async def get_post(post_id: int, db: Session = Depends(get_db)):
-    """Busca um post específico"""
+    """Busca um post específico - Público"""
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post:
         raise HTTPException(status_code=404, detail="Post não encontrado")
@@ -132,72 +240,12 @@ async def get_post(post_id: int, db: Session = Depends(get_db)):
         "attachment": post.attachment,
         "video_url": f"http://localhost:8000{post.attachment}" if post.attachment else None,
         "user_id": post.user_id,
-        "created_at": post.created_at.isoformat() if post.created_at else None
+        "created_at": post.created_at.isoformat() if post.created_at else None  # 👈 CORRIGIDO: post.created_at
     }
-
-# ===== ROTAS DE USUÁRIOS =====
-@app.post("/users")
-async def create_user(email: str = Form(...), password: str = Form(...), db: Session = Depends(get_db)):
-    """Cria um novo usuário"""
-    # Verifica se já existe
-    existing_user = db.query(User).filter(User.email_address == email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email já cadastrado")
-
-    # TODO: Hash da senha com bcrypt
-    user = User(
-        email_address=email,
-        password_digest=password  # Em produção: hash this!
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-
-    return {"message": "Usuário criado", "user_id": user.id}
-
-@app.get("/users")
-async def list_users(db: Session = Depends(get_db)):
-    """Lista todos os usuários"""
-    users = db.query(User).all()
-    return {
-        "users": [
-            {
-                "id": u.id,
-                "email": u.email_address,
-                "created_at": u.created_at.isoformat() if u.created_at else None
-            } for u in users
-        ]
-    }
-
-# ===== ROTAS DE COMENTÁRIOS =====
-@app.post("/posts/{post_id}/comments")
-async def create_comment(
-    post_id: int,
-    body: str = Form(...),
-    db: Session = Depends(get_db)
-):
-    """Adiciona comentário a um post"""
-    # Verifica se o post existe
-    post = db.query(Post).filter(Post.id == post_id).first()
-    if not post:
-        raise HTTPException(status_code=404, detail="Post não encontrado")
-
-    comment = Comment(
-        post_id=post_id,
-        user_id=1,  # TODO: Pegar do usuário autenticado
-        body=body
-    )
-
-    db.add(comment)
-    db.commit()
-    db.refresh(comment)
-
-    return {"message": "Comentário adicionado", "comment_id": comment.id}
 
 @app.get("/posts/{post_id}/comments")
 async def get_comments(post_id: int, db: Session = Depends(get_db)):
-    """Lista comentários de um post"""
+    """Lista comentários de um post - Público"""
     comments = db.query(Comment).filter(Comment.post_id == post_id).order_by(Comment.created_at.desc()).all()
 
     return {
@@ -214,7 +262,6 @@ async def get_comments(post_id: int, db: Session = Depends(get_db)):
 # ===== ROTA PARA TESTE RÁPIDO =====
 @app.post("/test/upload")
 async def test_upload():
-    """Rota para testar se o upload está funcionando"""
     return {
         "message": "Upload endpoint está funcionando!",
         "instructions": "Use /upload/video com form-data: title, description, file"
