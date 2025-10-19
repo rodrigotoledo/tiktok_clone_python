@@ -3,7 +3,7 @@
 # Quick Docker commands (to start/stop):
 # Start (detached):
 #   docker compose up -d
-# Stop and remove containers/networks: 
+# Stop and remove containers/networks:
 #   docker compose down
 
 # Byte-compiled / optimized / DLL files
@@ -76,3 +76,4 @@ env.*
 
 # Node modules (if any frontend parts are present)
 node_modules/
+*.pyc
