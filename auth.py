@@ -29,7 +29,7 @@ def get_password_hash(password):
     return hashed.decode('utf-8')
 
 # Funções JWT
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+def create_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
@@ -62,8 +62,8 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security), 
     return user
 
 # Função de autenticação
-def authenticate_user(db: Session, email: str, password: str):
-    user = db.query(User).filter(User.email_address == email).first()
+def authenticate_user(db: Session, email_address: str, password: str):
+    user = db.query(User).filter(User.email_address == email_address).first()
     if not user:
         return False
     if not verify_password(password, user.password_digest):

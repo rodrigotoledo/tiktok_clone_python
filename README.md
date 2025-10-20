@@ -19,6 +19,9 @@ docker compose up --build
 
 # Stop and remove containers/networks
 docker compose down
+
+
+docker compose exec backend python reset_db.py
 ```
 
 ## Development

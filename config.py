@@ -4,8 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Database
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/tiktok_clone")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "tiktok_clone")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@postgres:5432/tiktok_clone_python_development")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "tiktok_clone_python_development")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "postgres")
