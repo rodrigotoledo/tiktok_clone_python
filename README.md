@@ -15,10 +15,13 @@ A backend service built with Python, using Docker Compose for easy deployment an
 
 ```bash
 # Start (detached)
-docker compose up -d
+docker compose up --build
 
 # Stop and remove containers/networks
 docker compose down
+
+
+docker compose exec backend python reset_db.py
 ```
 
 ## Development
